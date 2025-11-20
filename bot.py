@@ -14,11 +14,11 @@ from discord import app_commands
 # ---------------------------
 # Configuration
 # ---------------------------
-BOT_OWNER_ID = 1203091367429931040  # change to your Discord user ID
+BOT_OWNER_ID = 822530323505741834  # change to your Discord user ID
 TOKEN = os.getenv("TOKEN")
-GUILD_ID = 1364029087693144075  # replace with your server ID
-CATEGORY_ID = 1365343722610491412  # replace with the ModMail category ID
-ALLOWED_ROLE_ID = 1312911932927250442  # role allowed to use moderator commands (e.g. Moderator)
+GUILD_ID = 1438617538874441781  # replace with your server ID
+CATEGORY_ID = 1438618584627810405  # replace with the ModMail category ID
+ALLOWED_ROLE_ID = 1434738274269794376  # role allowed to use moderator commands (e.g. Moderator)
 
 intents = discord.Intents.default()
 intents.messages = True

@@ -5,58 +5,62 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
 TOKEN = os.getenv("DISCORD_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
-STAFF_SERVER_ID = int(os.getenv("STAFF_SERVER_ID"))
-MODMAIL_CATEGORY_ID = int(os.getenv("MODMAIL_CATEGORY_ID"))
-STAFF_ROLE_ID = int(os.getenv("STAFF_ROLE_ID"))
 
+# ---------------------------
+# CONFIG (inside code)
+# ---------------------------
+STAFF_SERVER_ID = 1438617538874441781
+MODMAIL_CATEGORY_ID = 1438618584627810405
+OWNER_ID = 822530323505741834
+STAFF_ROLE_ID = 1434738274269794376
+
+PREFIX = "!"
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 
-# ----------------------------
-# OWNER-ONLY CHECK
-# ----------------------------
+# ----------------------------------------------------
+# OWNER CHECK
+# ----------------------------------------------------
 def is_owner():
     async def predicate(ctx):
         return ctx.author.id == OWNER_ID
     return commands.check(predicate)
 
 
-# ----------------------------
-# STARTUP
-# ----------------------------
+# ----------------------------------------------------
+# BOT READY
+# ----------------------------------------------------
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user}")
+    print(f"[LOGGED IN] {bot.user} is now online.")
+    print("Modmail bot running.")
 
 
-# ----------------------------
-# USER → SENDS DM TO BOT
-# ----------------------------
+# ----------------------------------------------------
+# MESSAGE HANDLING
+# ----------------------------------------------------
 @bot.event
 async def on_message(message):
-    # Ignore bot messages
     if message.author.bot:
         return
 
-    # If it's a DM, create a modmail ticket in staff server
+    # DM triggers modmail ticket
     if isinstance(message.channel, discord.DMChannel):
-        await handle_modmail(message)
+        await create_or_forward_ticket(message)
         return
 
     await bot.process_commands(message)
 
 
-# ----------------------------
-# FUNCTION: HANDLE MODMAIL
-# ----------------------------
-async def handle_modmail(message):
+# ----------------------------------------------------
+# MODMAIL: CREATE / FORWARD TICKET
+# ----------------------------------------------------
+async def create_or_forward_ticket(message):
     guild = bot.get_guild(STAFF_SERVER_ID)
     if guild is None:
         return
@@ -65,68 +69,89 @@ async def handle_modmail(message):
     if category is None:
         return
 
-    # Channel name format
-    channel_name = f"modmail-{message.author.id}"
+    username = message.author.name.replace(" ", "-").lower()
+    channel_name = f"modmail-{username}-{message.author.id}"
 
-    # Check if a ticket already exists
-    existing = discord.utils.get(category.channels, name=channel_name)
-    if existing:
-        await existing.send(f"📩 **New message from {message.author}:**\n{message.content}")
+    # Check if ticket already exists
+    existing_channel = discord.utils.get(category.channels, name=channel_name)
+    if existing_channel:
+        await existing_channel.send(
+            f"📩 **New message from {message.author}:**\n{message.content}"
+        )
         return
 
-    # CHANNEL PERMISSIONS (everyone can see)
+    # Permissions — everyone sees, but only staff + user can talk
     overwrites = {
         guild.default_role: PermissionOverwrite(view_channel=True, send_messages=False),
+        guild.get_role(STAFF_ROLE_ID): PermissionOverwrite(view_channel=True, send_messages=True),
         guild.get_member(message.author.id): PermissionOverwrite(view_channel=True, send_messages=True),
-        guild.get_role(STAFF_ROLE_ID): PermissionOverwrite(view_channel=True, send_messages=True)
     }
 
-    # Create channel
+    # Create new ticket channel
     channel = await category.create_text_channel(
         name=channel_name,
         overwrites=overwrites,
         topic=f"Modmail ticket for {message.author} ({message.author.id})"
     )
 
-    await channel.send(f"📬 **Modmail opened by {message.author}**\nMessage: {message.content}")
+    await channel.send(
+        f"📬 **Modmail opened by {message.author}**\n"
+        f"Message: {message.content}"
+    )
 
     await message.author.send(
-        "📨 Your message has been sent to staff. They will reply here."
+        "📨 Your message has been delivered to RTN Union Staff. They will respond here."
     )
 
 
-# ----------------------------
-# STAFF → REPLY IN TICKET
-# ----------------------------
+# ----------------------------------------------------
+# COMMAND: Reply
+# ----------------------------------------------------
 @bot.command()
-async def reply(ctx, *, msg):
-    """Reply to user from the modmail channel."""
+async def reply(ctx, *, message_text):
     if not ctx.channel.name.startswith("modmail-"):
-        return await ctx.reply("This command only works inside ticket channels.")
+        return await ctx.send("❌ This command can only be used in modmail channels.")
 
-    user_id = int(ctx.channel.name.split("-")[1])
+    parts = ctx.channel.name.split("-")
+    user_id = int(parts[-1])
     user = await bot.fetch_user(user_id)
 
-    await user.send(f"📣 **Staff reply:** {msg}")
-    await ctx.send(f"✅ Message sent to {user}")
+    await user.send(f"📣 **Staff Reply:** {message_text}")
+    await ctx.send("✅ Reply sent.")
 
 
-# ----------------------------
+# ----------------------------------------------------
+# COMMAND: Close Ticket
+# ----------------------------------------------------
+@bot.command()
+async def close(ctx):
+    if not ctx.channel.name.startswith("modmail-"):
+        return await ctx.send("❌ This command can only be used in modmail channels.")
+
+    await ctx.send("🗑 Closing this ticket in 3 seconds...")
+    await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.timedelta(seconds=3))
+    await ctx.channel.delete()
+
+
+# ----------------------------------------------------
 # OWNER COMMANDS
-# ----------------------------
+# ----------------------------------------------------
 @bot.command()
 @is_owner()
 async def shutdown(ctx):
-    await ctx.send("🛑 Shutting down…")
+    await ctx.send("🛑 Shutting down bot...")
     await bot.close()
 
 
 @bot.command()
 @is_owner()
 async def restart(ctx):
-    await ctx.send("🔄 Restarting…")
+    await ctx.send("🔄 Restarting bot...")
     await bot.close()
-    # PM2 or systemd will auto-restart it on Raspberry Pi
+    # Systemd / PM2 on the Pi handles restart
 
 
+# ----------------------------------------------------
+# RUN BOT
+# ----------------------------------------------------
 bot.run(TOKEN)

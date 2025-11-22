@@ -23,33 +23,24 @@ intents.message_content = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 
-# ----------------------------------------------------
 # OWNER CHECK
-# ----------------------------------------------------
 def is_owner():
     async def predicate(ctx):
         return ctx.author.id == OWNER_ID
     return commands.check(predicate)
 
 
-# ----------------------------------------------------
-# BOT READY
-# ----------------------------------------------------
 @bot.event
 async def on_ready():
     print(f"[LOGGED IN] {bot.user} is now online.")
     print("Modmail bot running.")
 
 
-# ----------------------------------------------------
-# MESSAGE HANDLING
-# ----------------------------------------------------
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # DM triggers modmail ticket
     if isinstance(message.channel, discord.DMChannel):
         await create_or_forward_ticket(message)
         return
@@ -57,9 +48,6 @@ async def on_message(message):
     await bot.process_commands(message)
 
 
-# ----------------------------------------------------
-# MODMAIL: CREATE / FORWARD TICKET
-# ----------------------------------------------------
 async def create_or_forward_ticket(message):
     guild = bot.get_guild(STAFF_SERVER_ID)
     if guild is None:
@@ -72,7 +60,6 @@ async def create_or_forward_ticket(message):
     username = message.author.name.replace(" ", "-").lower()
     channel_name = f"modmail-{username}-{message.author.id}"
 
-    # Check if ticket already exists
     existing_channel = discord.utils.get(category.channels, name=channel_name)
     if existing_channel:
         await existing_channel.send(
@@ -80,14 +67,12 @@ async def create_or_forward_ticket(message):
         )
         return
 
-    # Permissions — everyone sees, but only staff + user can talk
+    # FIXED PERMISSIONS
     overwrites = {
         guild.default_role: PermissionOverwrite(view_channel=True, send_messages=False),
         guild.get_role(STAFF_ROLE_ID): PermissionOverwrite(view_channel=True, send_messages=True),
-        guild.get_member(message.author.id): PermissionOverwrite(view_channel=True, send_messages=True),
     }
 
-    # Create new ticket channel
     channel = await category.create_text_channel(
         name=channel_name,
         overwrites=overwrites,
@@ -104,9 +89,6 @@ async def create_or_forward_ticket(message):
     )
 
 
-# ----------------------------------------------------
-# COMMAND: Reply
-# ----------------------------------------------------
 @bot.command()
 async def reply(ctx, *, message_text):
     if not ctx.channel.name.startswith("modmail-"):
@@ -120,9 +102,6 @@ async def reply(ctx, *, message_text):
     await ctx.send("✅ Reply sent.")
 
 
-# ----------------------------------------------------
-# COMMAND: Close Ticket
-# ----------------------------------------------------
 @bot.command()
 async def close(ctx):
     if not ctx.channel.name.startswith("modmail-"):
@@ -133,9 +112,6 @@ async def close(ctx):
     await ctx.channel.delete()
 
 
-# ----------------------------------------------------
-# OWNER COMMANDS
-# ----------------------------------------------------
 @bot.command()
 @is_owner()
 async def shutdown(ctx):
@@ -148,10 +124,6 @@ async def shutdown(ctx):
 async def restart(ctx):
     await ctx.send("🔄 Restarting bot...")
     await bot.close()
-    # Systemd / PM2 on the Pi handles restart
 
 
-# ----------------------------------------------------
-# RUN BOT
-# ----------------------------------------------------
 bot.run(TOKEN)
